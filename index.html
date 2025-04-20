@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Apocalypse Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background-color: #222;
+            cursor: crosshair;
+        }
+        
+        #uiPanel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px black;
+        }
+        
+        #gunSelector {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+        
+        .gunBtn {
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: 2px solid #555;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .gunBtn:hover, .gunBtn.active {
+            background: rgba(70, 70, 70, 0.8);
+            border-color: #aaa;
+        }
+        
+        #ammoDisplay {
+            position: absolute;
+            bottom: 60px;
+            right: 20px;
+            color: white;
+            font-size: 20px;
+            text-align: right;
+        }
+        
+        #healthBar {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 20px;
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #333;
+        }
+        
+        #healthFill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000, #00ff00);
+            transition: width 0.3s;
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 48px;
+        }
+        
+        #restartBtn {
+            margin-top: 20px;
+            padding: 10px 30px;
+            font-size: 24px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="uiPanel">
+        <div>Score: <span id="score">0</span></div>
+        <div>Wave: <span id="wave">1</span></div>
+    </div>
+    
+    <div id="gunSelector">
+        <button class="gunBtn active" data-gun="pistol">Pistol</button>
+        <button class="gunBtn" data-gun="shotgun">Shotgun</button>
+        <button class="gunBtn" data-gun="rifle">Rifle</button>
+        <button class="gunBtn" data-gun="minigun">Minigun</button>
+    </div>
+    
+    <div id="ammoDisplay">
+        <div id="currentAmmo">15</div>
+        <div id="totalAmmo">/ 60</div>
+    </div>
+    
+    <div id="healthBar">
+        <div id="healthFill"></div>
+    </div>
+    
+    <div id="gameOver">
+        <div>GAME OVER</div>
+        <div>Final Score: <span id="finalScore">0</span></div>
+        <button id="restartBtn">Restart</button>
+    </div>
+
+    <script>
+        // Game variables
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let score = 0;
+        let wave = 1;
+        let gameOver = false;
+        let health = 100;
+        
+        // Set canvas to full window size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Player object
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 20,
+            speed: 5,
+            dx: 0,
+            dy: 0
+        };
+        
+        // Guns configuration
+        const guns = {
+            pistol: {
+                damage: 25,
+                fireRate: 500,
+                ammo: 15,
+                maxAmmo: 60,
+                reloadTime: 1000,
+                spread: 0.05,
+                bulletsPerShot: 1,
+                color: '#FFD700',
+                size: 5,
+                sound: 'pistol.mp3'
+            },
+            shotgun: {
+                damage: 10,
+                fireRate: 1000,
+                ammo: 6,
+                maxAmmo: 24,
+                reloadTime: 1500,
+                spread: 0.2,
+                bulletsPerShot: 8,
+                color: '#8B4513',
+                size: 4,
+                sound: 'shotgun.mp3'
+            },
+            rifle: {
+                damage: 15,
+                fireRate: 100,
+                ammo: 30,
+                maxAmmo: 120,
+                reloadTime: 1200,
+                spread: 0.08,
+                bulletsPerShot: 1,
+                color: '#4682B4',
+                size: 4,
+                sound: 'rifle.mp3'
+            },
+            minigun: {
+                damage: 8,
+                fireRate: 50,
+                ammo: 100,
+                maxAmmo: 300,
+                reloadTime: 2500,
+                spread: 0.15,
+                bulletsPerShot: 1,
+                color: '#B22222',
+                size: 3,
+                sound: 'minigun.mp3'
+            }
+        };
+        
+        let currentGun = 'pistol';
+        let lastShotTime = 0;
+        let isReloading = false;
+        
+        // Bullets array
+        let bullets = [];
+        
+        // Zombies array
+        let zombies = [];
+        let zombieSpawnRate = 1000; // ms
+        let lastZombieSpawn = 0;
+        
+        // Blood particles
+        let bloodParticles = [];
+        
+        // Mouse position
+        let mouseX = 0;
+        let mouseY = 0;
+        
+        // Event listeners
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('mousemove', updateMousePosition);
+        canvas.addEventListener('click', shoot);
+        document.querySelectorAll('.gunBtn').forEach(btn => {
+            btn.addEventListener('click', switchGun);
+        });
+        document.getElementById('restartBtn').addEventListener('click', restartGame);
+        
+        // Keyboard controls
+        window.addEventListener('keydown', keyDown);
+        window.addEventListener('keyup', keyUp);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' && !isReloading) {
+                reload();
+            }
+            
+            // Number keys for weapon switching
+            if (e.key === '1') switchGun({target: document.querySelector('[data-gun="pistol"]')});
+            if (e.key === '2') switchGun({target: document.querySelector('[data-gun="shotgun"]')});
+            if (e.key === '3') switchGun({target: document.querySelector('[data-gun="rifle"]')});
+            if (e.key === '4') switchGun({target: document.querySelector('[data-gun="minigun"]')});
+        });
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+        }
+        
+        function updateMousePosition(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function keyDown(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a') player.dx = -player.speed;
+            if (e.key === 'ArrowRight' || e.key === 'd') player.dx = player.speed;
+            if (e.key === 'ArrowUp' || e.key === 'w') player.dy = -player.speed;
+            if (e.key === 'ArrowDown' || e.key === 's') player.dy = player.speed;
+        }
+        
+        function keyUp(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') player.dx = 0;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'ArrowDown' || e.key === 's') player.dy = 0;
+        }
+        
+        function switchGun(e) {
+            const gunType = e.target.getAttribute('data-gun');
+            currentGun = gunType;
+            
+            // Update UI
+            document.querySelectorAll('.gunBtn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            e.target.classList.add('active');
+            
+            // Update ammo display
+            updateAmmoDisplay();
+        }
+        
+        function shoot() {
+            if (gameOver || isReloading) return;
+            
+            const now = Date.now();
+            if (now - lastShotTime < guns[currentGun].fireRate) return;
+            
+            if (guns[currentGun].ammo <= 0) {
+                reload();
+                return;
+            }
+            
+            // Play sound (commented out as we don't have actual files)
+            // const audio = new Audio(guns[currentGun].sound);
+            // audio.play();
+            
+            // Create bullets
+            for (let i = 0; i < guns[currentGun].bulletsPerShot; i++) {
+                const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+                const spread = (Math.random() - 0.5) * guns[currentGun].spread;
+                
+                bullets.push({
+                    x: player.x,
+                    y: player.y,
+                    dx: Math.cos(angle + spread) * 10,
+                    dy: Math.sin(angle + spread) * 10,
+                    radius: guns[currentGun].size,
+                    color: guns[currentGun].color,
+                    damage: guns[currentGun].damage
+                });
+            }
+            
+            // Update ammo and last shot time
+            guns[currentGun].ammo--;
+            lastShotTime = now;
+            
+            // Update UI
+            updateAmmoDisplay();
+        }
+        
+        function reload() {
+            if (isReloading || guns[currentGun].ammo === guns[currentGun].maxAmmo) return;
+            
+            isReloading = true;
+            
+            setTimeout(() => {
+                guns[currentGun].ammo = Math.min(
+                    guns[currentGun].maxAmmo,
+                    guns[currentGun].ammo + guns[currentGun].maxAmmo
+                );
+                isReloading = false;
+                updateAmmoDisplay();
+            }, guns[currentGun].reloadTime);
+        }
+        
+        function updateAmmoDisplay() {
+            document.getElementById('currentAmmo').textContent = guns[currentGun].ammo;
+            document.getElementById('totalAmmo').textContent = `/ ${guns[currentGun].maxAmmo}`;
+            
+            // Flash red if low ammo
+            if (guns[currentGun].ammo / guns[currentGun].maxAmmo < 0.2) {
+                document.getElementById('currentAmmo').style.color = 'red';
+            } else {
+                document.getElementById('currentAmmo').style.color = 'white';
+            }
+        }
+        
+        function spawnZombie() {
+            // Spawn from edges
+            let x, y;
+            if (Math.random() < 0.5) {
+                x = Math.random() < 0.5 ? 0 : canvas.width;
+                y = Math.random() * canvas.height;
+            } else {
+                x = Math.random() * canvas.width;
+                y = Math.random() < 0.5 ? 0 : canvas.height;
+            }
+            
+            zombies.push({
+                x: x,
+                y: y,
+                radius: 15 + Math.random() * 10, // Varied sizes
+                speed: 1 + Math.random() * wave * 0.2, // Faster with higher waves
+                health: 30 + wave * 5, // Tougher with higher waves
+                maxHealth: 30 + wave * 5,
+                damage: 10,
+                color: `hsl(${Math.random() * 60}, 70%, 30%)` // Greenish colors
+            });
+        }
+        
+        function update() {
+            if (gameOver) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update player position
+            player.x += player.dx;
+            player.y += player.dy;
+            
+            // Keep player in bounds
+            player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+            
+            // Draw player
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw gun pointer
+            const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+            const gunLength = 30;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y);
+            ctx.lineTo(
+                player.x + Math.cos(angle) * gunLength,
+                player.y + Math.sin(angle) * gunLength
+            );
+            ctx.stroke();
+            
+            // Update and draw bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                
+                // Remove bullets that are out of bounds
+                if (bullet.x < 0 || bullet.x > canvas.width || bullet.y < 0 || bullet.y > canvas.height) {
+                    bullets.splice(i, 1);
+                    continue;
+                }
+                
+                // Draw bullet
+                ctx.fillStyle = bullet.color;
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Check for zombie hits
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    const zombie = zombies[j];
+                    const dist = Math.hypot(bullet.x - zombie.x, bullet.y - zombie.y);
+                    
+                    if (dist < zombie.radius + bullet.radius) {
+                        // Hit zombie
+                        zombie.health -= bullet.damage;
+                        
+                        // Create blood particles
+                        for (let k = 0; k < 5; k++) {
+                            bloodParticles.push({
+                                x: zombie.x,
+                                y: zombie.y,
+                                dx: (Math.random() - 0.5) * 3,
+                                dy: (Math.random() - 0.5) * 3,
+                                radius: Math.random() * 3 + 1,
+                                color: `hsl(0, 100%, ${Math.random() * 30 + 50}%)`,
+                                life: 100
+                            });
+                        }
+                        
+                        // Remove bullet
+                        bullets.splice(i, 1);
+                        
+                        // Check if zombie died
+                        if (zombie.health <= 0) {
+                            // More blood for death
+                            for (let k = 0; k < 20; k++) {
+                                bloodParticles.push({
+                                    x: zombie.x,
+                                    y: zombie.y,
+                                    dx: (Math.random() - 0.5) * 5,
+                                    dy: (Math.random() - 0.5) * 5,
+                                    radius: Math.random() * 4 + 2,
+                                    color: `hsl(0, 100%, ${Math.random() * 30 + 50}%)`,
+                                    life: 100
+                                });
+                            }
+                            
+                            zombies.splice(j, 1);
+                            score += 10;
+                            document.getElementById('score').textContent = score;
+                            
+                            // Check for wave completion
+                            if (zombies.length === 0 && Date.now() - lastZombieSpawn > zombieSpawnRate * 5) {
+                                nextWave();
+                            }
+                        }
+                        
+                        break;
+                    }
+                }
+            }
+            
+            // Spawn zombies
+            const now = Date.now();
+            if (now - lastZombieSpawn > zombieSpawnRate && zombies.length < 5 + wave * 2) {
+                spawnZombie();
+                lastZombieSpawn = now;
+            }
+            
+            // Update and draw zombies
+            for (let i = 0; i < zombies.length; i++) {
+                const zombie = zombies[i];
+                
+                // Move toward player
+                const angle = Math.atan2(player.y - zombie.y, player.x - zombie.x);
+                zombie.x += Math.cos(angle) * zombie.speed;
+                zombie.y += Math.sin(angle) * zombie.speed;
+                
+                // Draw zombie
+                ctx.fillStyle = zombie.color;
+                ctx.beginPath();
+                ctx.arc(zombie.x, zombie.y, zombie.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw health bar
+                const healthPercent = zombie.health / zombie.maxHealth;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(
+                    zombie.x - zombie.radius,
+                    zombie.y - zombie.radius - 10,
+                    zombie.radius * 2,
+                    5
+                );
+                ctx.fillStyle = 'lime';
+                ctx.fillRect(
+                    zombie.x - zombie.radius,
+                    zombie.y - zombie.radius - 10,
+                    zombie.radius * 2 * healthPercent,
+                    5
+                );
+                
+                // Check for player collision
+                const dist = Math.hypot(player.x - zombie.x, player.y - zombie.y);
+                if (dist < player.radius + zombie.radius) {
+                    health -= zombie.damage / 60; // Damage per frame
+                    document.getElementById('healthFill').style.width = `${health}%`;
+                    
+                    if (health <= 0) {
+                        gameOver = true;
+                        document.getElementById('finalScore').textContent = score;
+                        document.getElementById('gameOver').style.display = 'flex';
+                    }
+                }
+            }
+            
+            // Update and draw blood particles
+            for (let i = bloodParticles.length - 1; i >= 0; i--) {
+                const particle = bloodParticles[i];
+                particle.x += particle.dx;
+                particle.y += particle.dy;
+                particle.life--;
+                
+                // Draw particle
+                ctx.fillStyle = particle.color;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Remove dead particles
+                if (particle.life <= 0) {
+                    bloodParticles.splice(i, 1);
+                }
+            }
+            
+            requestAnimationFrame(update);
+        }
+        
+        function nextWave() {
+            wave++;
+            document.getElementById('wave').textContent = wave;
+            zombieSpawnRate = Math.max(200, 1000 - wave * 50); // Faster spawning with higher waves
+            
+            // Refill ammo between waves
+            for (const gun in guns) {
+                guns[gun].ammo = guns[gun].maxAmmo;
+            }
+            updateAmmoDispl
